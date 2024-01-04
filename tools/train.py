@@ -112,15 +112,16 @@ def parse_args():
 
     return args
 
-
+# 
 def main():
     args = parse_args()
 
+    # mmcv的一个类，用于载入cfg文件的工具
     cfg = Config.fromfile(args.config)
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
 
-    # set multi-process settings
+    # set multi-process settings (mmdet自带的)
     setup_multi_processes(cfg)
 
     # set cudnn_benchmark

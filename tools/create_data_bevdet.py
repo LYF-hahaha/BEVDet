@@ -101,14 +101,16 @@ def nuscenes_data_prep(root_path, info_prefix, version, max_sweeps=10):
         root_path, info_prefix, version=version, max_sweeps=max_sweeps)
 
 
+# 生成pkl文件
 def add_ann_adj_info(extra_tag):
     # nuscenes_version = 'v1.0-trainval'
     nuscenes_version = 'v1.0-mini'
     dataroot = './data/nuscenes/'
     nuscenes = NuScenes(nuscenes_version, dataroot)
     for set in ['train', 'val']:
-        dataset = pickle.load(
-            open('./data/nuscenes/%s_infos_%s.pkl' % (extra_tag, set), 'rb'))
+        # 新建pkl文件
+        dataset = pickle.load(open('./data/nuscenes/%s_infos_%s.pkl' % (extra_tag, set), 'rb'))
+        # 整合各通道的数据
         for id in range(len(dataset['infos'])):
             if id % 10 == 0:
                 print('%d/%d' % (id, len(dataset['infos'])))
@@ -130,8 +132,8 @@ def add_ann_adj_info(extra_tag):
             scene = nuscenes.get('scene', sample['scene_token'])
             dataset['infos'][id]['occ_path'] = \
                 './data/nuscenes/gts/%s/%s'%(scene['name'], info['token'])
-        with open('./data/nuscenes/%s_infos_%s.pkl' % (extra_tag, set),
-                  'wb') as fid:
+        # 写入pkl文件
+        with open('./data/nuscenes/%s_infos_%s.pkl' % (extra_tag, set),'wb') as fid:
             pickle.dump(dataset, fid)
 
 
@@ -142,6 +144,9 @@ if __name__ == '__main__':
     # version = 'v1.0-test'
     root_path = './data/nuscenes'
     extra_tag = 'bevdetv3-nuscenes'
+    # 将原始数据集合成pkl格式的文件
+    # 根据version信息，到指定的json文件中获取场景索引
+    # 根据train val test划分，生成场景名列表
     nuscenes_data_prep(
         root_path=root_path,
         info_prefix=extra_tag,
@@ -151,6 +156,7 @@ if __name__ == '__main__':
     # print('add_ann_infos')
     add_ann_adj_info(extra_tag)
 
+    # 生成box_gt
     create_groundtruth_database('NuScenesDataset',
                                 root_path,
                                 extra_tag,

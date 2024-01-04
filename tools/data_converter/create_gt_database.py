@@ -136,12 +136,13 @@ def create_groundtruth_database(dataset_class_name,
     database_save_path = None
     db_info_save_path = None
 
-    print(f'Create GT Database of {dataset_class_name}')
+    print(f'\nCreate GT Database of {dataset_class_name}')
     CLASSES = ('car', 'truck', 'construction_vehicle', 'bus', 'trailer',
         'barrier', 'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone')
 
-    dataset_cfg = dict(
-        type=dataset_class_name, data_root=data_path, ann_file=info_path)
+    # 生成数据集的config文件
+    # 是个字典，主要用于选择数据类型、通道、数量等
+    dataset_cfg = dict(type=dataset_class_name, data_root=data_path, ann_file=info_path)
     dataset_cfg.update(
         use_valid_flag=True,
         modality=dict(
@@ -172,6 +173,7 @@ def create_groundtruth_database(dataset_class_name,
                 is_train=False
             ),
         ])
+    # mmdet3d里的API，直接调用
     dataset = build_dataset(dataset_cfg)
 
     if database_save_path is None:
@@ -187,6 +189,7 @@ def create_groundtruth_database(dataset_class_name,
         input_dict = dataset.get_data_info(j)
         dataset.pre_pipeline(input_dict)
         example = dataset.pipeline(input_dict)
+        # 取 gt_info
         annos = dict(
             gt_bboxes_3d=example['gt_bboxes_3d'],
             gt_labels_3d=example['gt_labels_3d'],
@@ -208,8 +211,9 @@ def create_groundtruth_database(dataset_class_name,
         # enlarge the bbox acoording to the instance motion
         num_obj = gt_boxes_3d.shape[0]
         gt_boxes_3d_range = gt_boxes_3d.copy()
+        # [box_xyz,box_dxdydz,box_yaw,box_velox_veloy] 9个维度
         relative_velocity = gt_boxes_3d_range[:, 7:]
-        relative_offset = relative_velocity * 0.5
+        relative_offset = relative_velocity * 0.5    # 假设同速相向而行？
         yaw = gt_boxes_3d_range[:,6]
         s = np.sin(yaw)
         c = np.cos(yaw)
@@ -217,7 +221,7 @@ def create_groundtruth_database(dataset_class_name,
         rot = rot.reshape(num_obj, 2, 2)
         size_offset = rot @ relative_offset.reshape(num_obj,2,1)
         size_offset = np.abs(size_offset.reshape(num_obj, 2))
-
+        # Box尺寸和中心点位置
         gt_boxes_3d_range[:, 3:5] = gt_boxes_3d_range[:, 3:5] + size_offset
         gt_boxes_3d_range[:, :2] = gt_boxes_3d_range[:, :2] - relative_offset * 0.5
 

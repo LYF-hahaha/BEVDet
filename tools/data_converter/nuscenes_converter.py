@@ -41,9 +41,12 @@ def create_nuscenes_infos(root_path,
             Default: 10.
     """
     from nuscenes.nuscenes import NuScenes
+    # 实例化一个管理组织nuSences数据的类，需要输入数据版本、数据根目录、载入过程中是否打印相关信息
     nusc = NuScenes(version=version, dataroot=root_path, verbose=True)
+    # 事先定义好的数据划分list，根据场景编号划分
     from nuscenes.utils import splits
     available_vers = ['v1.0-trainval', 'v1.0-test', 'v1.0-mini']
+    # 只有3个可选
     assert version in available_vers
     if version == 'v1.0-trainval':
         train_scenes = splits.train
@@ -51,6 +54,7 @@ def create_nuscenes_infos(root_path,
     elif version == 'v1.0-test':
         train_scenes = splits.test
         val_scenes = []
+    # 这里的train&val都是以场景编号为元素的字典
     elif version == 'v1.0-mini':
         train_scenes = splits.mini_train
         val_scenes = splits.mini_val
@@ -58,8 +62,11 @@ def create_nuscenes_infos(root_path,
         raise ValueError('unknown')
 
     # filter existing scenes.
+    # 记录了场景的字典
     available_scenes = get_available_scenes(nusc)
+    # 由从字典中提取出的场景名称组成的list
     available_scene_names = [s['name'] for s in available_scenes]
+    # train val 划分（场景名和场景token）
     train_scenes = list(
         filter(lambda x: x in available_scene_names, train_scenes))
     val_scenes = list(filter(lambda x: x in available_scene_names, val_scenes))
@@ -72,6 +79,7 @@ def create_nuscenes_infos(root_path,
         for s in val_scenes
     ])
 
+    # 判断版本中是否存在测试字眼
     test = 'test' in version
     if test:
         print('test scene: {}'.format(len(train_scenes)))
@@ -115,8 +123,11 @@ def get_available_scenes(nusc):
             available scenes.
     """
     available_scenes = []
+    # 场景列表是scene.json文件中定义好的
+    # 一个场景是由多帧组成的，通过sample_token划分场景的长度
     print('total scene num: {}'.format(len(nusc.scene)))
     for scene in nusc.scene:
+        # 获取token和idx的对应
         scene_token = scene['token']
         scene_rec = nusc.get('scene', scene_token)
         sample_rec = nusc.get('sample', scene_rec['first_sample_token'])
