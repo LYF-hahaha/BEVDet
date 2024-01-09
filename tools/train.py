@@ -114,6 +114,7 @@ def parse_args():
 
 # 
 def main():
+    # 从configs/bevdet/bevdet-r50.py里导入的参数
     args = parse_args()
 
     # mmcv的一个类，用于载入cfg文件的工具
@@ -264,6 +265,8 @@ def main():
         datasets.append(build_dataset(cfg.data.train))
     # add an attribute for visualization convenience
     model.CLASSES = datasets[0].CLASSES
+    
+    # mmdet3d写的一个API
     train_model(
         model,
         datasets,

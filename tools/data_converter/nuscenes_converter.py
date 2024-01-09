@@ -181,6 +181,7 @@ def _fill_trainval_infos(nusc,
         cs_record = nusc.get('calibrated_sensor',
                              sd_rec['calibrated_sensor_token'])
         pose_record = nusc.get('ego_pose', sd_rec['ego_pose_token'])
+        # 获取旋转矩阵 & 平移向量
         lidar_path, boxes, _ = nusc.get_sample_data(lidar_token)
 
         mmcv.check_file_exist(lidar_path)
@@ -233,6 +234,7 @@ def _fill_trainval_infos(nusc,
             else:
                 break
         info['sweeps'] = sweeps
+        
         # obtain annotation
         if not test:
             annotations = [

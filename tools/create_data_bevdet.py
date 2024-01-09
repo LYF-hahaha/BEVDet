@@ -145,6 +145,7 @@ if __name__ == '__main__':
     root_path = './data/nuscenes'
     extra_tag = 'bevdetv3-nuscenes'
     # 将原始数据集合成pkl格式的文件
+    # 这里会进行数据前融合（如Radar需要分别逆时针旋转0、90、180、270度）
     # 根据version信息，到指定的json文件中获取场景索引
     # 根据train val test划分，生成场景名列表
     nuscenes_data_prep(
@@ -161,3 +162,4 @@ if __name__ == '__main__':
                                 root_path,
                                 extra_tag,
                                 f'{root_path}/{extra_tag}_infos_train.pkl')
+    
