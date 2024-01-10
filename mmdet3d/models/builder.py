@@ -13,6 +13,7 @@ from mmdet.models.builder import ROI_EXTRACTORS as MMDET_ROI_EXTRACTORS
 from mmdet.models.builder import SHARED_HEADS as MMDET_SHARED_HEADS
 from mmseg.models.builder import LOSSES as MMSEG_LOSSES
 
+# mmcv的一个类，可以实现str到function or class的映射
 MODELS = Registry('models', parent=MMCV_MODELS)
 
 BACKBONES = MODELS

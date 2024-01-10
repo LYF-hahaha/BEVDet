@@ -118,7 +118,9 @@ def main():
     args = parse_args()
 
     # mmcv的一个类，用于载入cfg文件的工具
+    # args.config是一个cfg文件的路径，返回的是一个类，里面有信息字典
     cfg = Config.fromfile(args.config)
+    # 如果option非空，合并之
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
 
@@ -137,6 +139,7 @@ def main():
         # use config filename as default work_dir if cfg.work_dir is None
         cfg.work_dir = osp.join('./work_dirs',
                                 osp.splitext(osp.basename(args.config))[0])
+    # 从断点恢复
     if args.resume_from is not None:
         cfg.resume_from = args.resume_from
 
@@ -180,7 +183,10 @@ def main():
     # dump config
     cfg.dump(osp.join(cfg.work_dir, osp.basename(args.config)))
     # init the logger before other steps
+    # strftime:结构化输出时间的一种函数
+    # 不同的符号表示不同的时间数据（如%Y表示年份）
     timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+    # 时间戳用于命名log文件
     log_file = osp.join(cfg.work_dir, f'{timestamp}.log')
     # specify logger name, if we still use 'mmdet', the output info will be
     # filtered and won't be saved in the log_file
@@ -218,6 +224,9 @@ def main():
     meta['seed'] = seed
     meta['exp_name'] = osp.basename(args.config)
 
+    # 具体没看太懂
+    # 反正感觉像是用了Registry，一个能实现str到class or func的映射类
+    # model是一个类，里面的_modules已经是一个有序字典，包括conv1、bn1、relu、maxpool、layer1...
     model = build_model(
         cfg.model,
         train_cfg=cfg.get('train_cfg'),

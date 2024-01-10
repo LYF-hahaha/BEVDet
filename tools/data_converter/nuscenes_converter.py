@@ -49,7 +49,7 @@ def create_nuscenes_infos(root_path,
     # 只有3个可选
     assert version in available_vers
     if version == 'v1.0-trainval':
-        train_scenes = splits.train
+        train_scenes = splits.train # 一个.py文件，里面是人为给定好的场景名list
         val_scenes = splits.val
     elif version == 'v1.0-test':
         train_scenes = splits.test
@@ -62,11 +62,11 @@ def create_nuscenes_infos(root_path,
         raise ValueError('unknown')
 
     # filter existing scenes.
-    # 记录了场景的字典
+    # 主要是看scene中的LiDAR Data在不在，不在的话就不是availabel
     available_scenes = get_available_scenes(nusc)
     # 由从字典中提取出的场景名称组成的list
     available_scene_names = [s['name'] for s in available_scenes]
-    # train val 划分（场景名和场景token）
+    # 取available分别与train&val的交集，做划分（场景名和场景token）
     train_scenes = list(
         filter(lambda x: x in available_scene_names, train_scenes))
     val_scenes = list(filter(lambda x: x in available_scene_names, val_scenes))
@@ -86,6 +86,7 @@ def create_nuscenes_infos(root_path,
     else:
         print('train scene: {}, val scene: {}'.format(
             len(train_scenes), len(val_scenes)))
+    # 
     train_nusc_infos, val_nusc_infos = _fill_trainval_infos(
         nusc, train_scenes, val_scenes, test, max_sweeps=max_sweeps)
 
@@ -109,6 +110,7 @@ def create_nuscenes_infos(root_path,
         mmcv.dump(data, info_val_path)
 
 
+# 主要是看scene中的LiDAR Data在不在，不在的话就不是availabel 
 def get_available_scenes(nusc):
     """Get available scenes from the input nuscenes class.
 
@@ -126,33 +128,60 @@ def get_available_scenes(nusc):
     # 场景列表是scene.json文件中定义好的
     # 一个场景是由多帧组成的，通过sample_token划分场景的长度
     print('total scene num: {}'.format(len(nusc.scene)))
+    # nusc是NuScenes类实例化的对象
+    # scene是一个由字典组成的列表
+    # 每个字典中包含token、log_token、nbr_samples、fst_samp_tok、lst_samp_tok、name desc
     for scene in nusc.scene:
-        # 获取token和idx的对应
+        # 获取当前scene中的各个键值
+        # 键
         scene_token = scene['token']
+        # 键对应的值
         scene_rec = nusc.get('scene', scene_token)
+        # scene的第一个sample info
         sample_rec = nusc.get('sample', scene_rec['first_sample_token'])
+        # 获取当前scene第一个sample的LiDAR .bin文件所在的位置
+        # 以及该sample的ego_pose、sensor_calib等信息
         sd_rec = nusc.get('sample_data', sample_rec['data']['LIDAR_TOP'])
+        # 是否还有下一帧（这个flag没改动过）
         has_more_frames = True
+        # 当前scene是否不存在
         scene_not_exist = False
         while has_more_frames:
+            # 用当前点云数据管理字典中的token值获取点云文件路径
+            # 后面的boxes在这里没用上？
             lidar_path, boxes, _ = nusc.get_sample_data(sd_rec['token'])
             lidar_path = str(lidar_path)
+            # './data/nuscenes/samples/LIDAR_TOP/n015-2018-07-24-11-22-45+0800__LIDAR_TOP__1532402927647951.pcd.bin'
+            
+            # 如果LiDAR path是绝对路径，且包含了cwd
+            # 就在cwd处分开，取后半段
+            p = os.getcwd() # '/root/workspace/BEVDet'
             if os.getcwd() in lidar_path:
                 # path from lyftdataset is absolute path
                 lidar_path = lidar_path.split(f'{os.getcwd()}/')[-1]
                 # relative path
+            # LiDAR路径不存在，则场景不存在
+            # 或者当前场景的雷达数据取到头了
             if not mmcv.is_filepath(lidar_path):
                 scene_not_exist = True
                 break
             else:
                 break
+        # 当前场景不存在，就下一个场景
         if scene_not_exist:
             continue
+        # 当前场景加入列表
         available_scenes.append(scene)
     print('exist scene num: {}'.format(len(available_scenes)))
+    # 返回场景列表
     return available_scenes
 
-
+# 整理 train&val 的数据
+# 1、遍历当前scene的sample，获得lidar数据的path、boxes
+# 2、建立info字典，获取平移向量和旋转四元数的数值
+# 3、获取各相机内参
+# 4、将其余传感器数据转换至LiDAR坐标系下（用1~3获得的信息）
+# 5、获取gt数据（box、names、velocity...）
 def _fill_trainval_infos(nusc,
                          train_scenes,
                          val_scenes,
@@ -176,28 +205,31 @@ def _fill_trainval_infos(nusc,
     val_nusc_infos = []
 
     for sample in mmcv.track_iter_progress(nusc.sample):
+        # 获取当前sample的LiDAR数据
         lidar_token = sample['data']['LIDAR_TOP']
         sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
         cs_record = nusc.get('calibrated_sensor',
                              sd_rec['calibrated_sensor_token'])
         pose_record = nusc.get('ego_pose', sd_rec['ego_pose_token'])
-        # 获取旋转矩阵 & 平移向量
+        
+        # boxes包含标签、中心点位置(x,y,z)、长宽高、朝向(四元数&方向向量)、速度(3个方向的)
         lidar_path, boxes, _ = nusc.get_sample_data(lidar_token)
-
+        # 判断LiDAR点云文件是否存在
         mmcv.check_file_exist(lidar_path)
-
+        # info字典，获取平移向量和旋转四元数的数值
+        # 其中包括 雷达->自车 和 自车->全局 的
         info = {
             'lidar_path': lidar_path,
             'token': sample['token'],
             'sweeps': [],
-            'cams': dict(),
+            'cams': dict(), # 用于存放内参的字典
             'lidar2ego_translation': cs_record['translation'],
             'lidar2ego_rotation': cs_record['rotation'],
             'ego2global_translation': pose_record['translation'],
             'ego2global_rotation': pose_record['rotation'],
             'timestamp': sample['timestamp'],
         }
-
+        # 旋转&平移的具体数值
         l2e_r = info['lidar2ego_rotation']
         l2e_t = info['lidar2ego_translation']
         e2g_r = info['ego2global_rotation']
@@ -220,6 +252,7 @@ def _fill_trainval_infos(nusc,
             cam_info = obtain_sensor2top(nusc, cam_token, l2e_t, l2e_r_mat,
                                          e2g_t, e2g_r_mat, cam)
             cam_info.update(cam_intrinsic=cam_intrinsic)
+            # 更新相机内参
             info['cams'].update({cam: cam_info})
 
         # obtain sweeps for a single key-frame
@@ -227,6 +260,7 @@ def _fill_trainval_infos(nusc,
         sweeps = []
         while len(sweeps) < max_sweeps:
             if not sd_rec['prev'] == '':
+                # 传感器坐标转换为统一的
                 sweep = obtain_sensor2top(nusc, sd_rec['prev'], l2e_t,
                                           l2e_r_mat, e2g_t, e2g_r_mat, 'lidar')
                 sweeps.append(sweep)
@@ -245,6 +279,7 @@ def _fill_trainval_infos(nusc,
             dims = np.array([b.wlh for b in boxes]).reshape(-1, 3)
             rots = np.array([b.orientation.yaw_pitch_roll[0]
                              for b in boxes]).reshape(-1, 1)
+            # box velo 是两个方向的
             velocity = np.array(
                 [nusc.box_velocity(token)[:2] for token in sample['anns']])
             valid_flag = np.array(
@@ -252,32 +287,39 @@ def _fill_trainval_infos(nusc,
                  for anno in annotations],
                 dtype=bool).reshape(-1)
             # convert velo from global to lidar
+            # Global -> ego -> LiDAR (比如移动中的它车)
             for i in range(len(boxes)):
                 velo = np.array([*velocity[i], 0.0])
                 velo = velo @ np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(
                     l2e_r_mat).T
                 velocity[i] = velo[:2]
-
+                
+            # 元素为str的B-Box类别名列表
             names = [b.name for b in boxes]
+            # 按类别名遍历
             for i in range(len(names)):
+                # name变简短
                 if names[i] in NuScenesDataset.NameMapping:
                     names[i] = NuScenesDataset.NameMapping[names[i]]
+            # str array
             names = np.array(names)
             # we need to convert box size to
             # the format of our lidar coordinate system
             # which is x_size, y_size, z_size (corresponding to l, w, h)
+            # gt_boxes的dim=7 (c_x, c_y, c_z, l, w, h, yaw) 
             gt_boxes = np.concatenate([locs, dims[:, [1, 0, 2]], rots], axis=1)
             assert len(gt_boxes) == len(
                 annotations), f'{len(gt_boxes)}, {len(annotations)}'
             info['gt_boxes'] = gt_boxes
             info['gt_names'] = names
+            # 速度有2个方向的
             info['gt_velocity'] = velocity.reshape(-1, 2)
             info['num_lidar_pts'] = np.array(
                 [a['num_lidar_pts'] for a in annotations])
             info['num_radar_pts'] = np.array(
                 [a['num_radar_pts'] for a in annotations])
             info['valid_flag'] = valid_flag
-
+        # 
         if sample['scene_token'] in train_scenes:
             train_nusc_infos.append(info)
         else:
@@ -285,7 +327,7 @@ def _fill_trainval_infos(nusc,
 
     return train_nusc_infos, val_nusc_infos
 
-
+# 将其他传感器转换至LiDAR(Cam & Radar)
 def obtain_sensor2top(nusc,
                       sensor_token,
                       l2e_t,
@@ -336,6 +378,7 @@ def obtain_sensor2top(nusc,
     # sweep->ego->global->ego'->lidar
     l2e_r_s_mat = Quaternion(l2e_r_s).rotation_matrix
     e2g_r_s_mat = Quaternion(e2g_r_s).rotation_matrix
+    # 旋转矩阵 & 平移向量
     R = (l2e_r_s_mat.T @ e2g_r_s_mat.T) @ (
         np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(l2e_r_mat).T)
     T = (l2e_t_s @ e2g_r_s_mat.T + e2g_t_s) @ (
@@ -344,6 +387,7 @@ def obtain_sensor2top(nusc,
                   ) + l2e_t @ np.linalg.inv(l2e_r_mat).T
     sweep['sensor2lidar_rotation'] = R.T  # points @ R.T + T
     sweep['sensor2lidar_translation'] = T
+    # 管理当前sample sweep数据的字典
     return sweep
 
 

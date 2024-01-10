@@ -142,6 +142,9 @@ def create_groundtruth_database(dataset_class_name,
 
     # 生成数据集的config文件
     # 是个字典，主要用于选择数据类型、通道、数量等
+    # {'type': 'NuScenesDataset', 
+    # 'data_root': './data/nuscenes', 
+    # 'ann_file': './data/nuscenes/bevdetv3-nuscenes_infos_train.pkl'}
     dataset_cfg = dict(type=dataset_class_name, data_root=data_path, ann_file=info_path)
     dataset_cfg.update(
         use_valid_flag=True,
@@ -186,16 +189,19 @@ def create_groundtruth_database(dataset_class_name,
 
     group_counter = 0
     for j in track_iter_progress(list(range(len(dataset)))):
+        # 输入的某一sample
         input_dict = dataset.get_data_info(j)
         dataset.pre_pipeline(input_dict)
         example = dataset.pipeline(input_dict)
-        # 取 gt_info
+        # 获取example中的gt_box_info
+        # 这里全是直接数据（如c_x、c_y、c_z; h、w等）
         annos = dict(
             gt_bboxes_3d=example['gt_bboxes_3d'],
             gt_labels_3d=example['gt_labels_3d'],
             gt_names=[CLASSES[cid] for cid in example['gt_labels_3d']]
         )
         image_idx = example['sample_idx']
+        # LiDAR point是5个维度，前3个为x、y、z，后两个整数不知道是啥
         points = example['points'].tensor.numpy()
         gt_boxes_3d = annos['gt_bboxes_3d'].tensor.numpy()
         names = annos['gt_names']
@@ -217,12 +223,14 @@ def create_groundtruth_database(dataset_class_name,
         yaw = gt_boxes_3d_range[:,6]
         s = np.sin(yaw)
         c = np.cos(yaw)
+        # 平面旋转矩阵
         rot = np.stack([c, s, -s, c], axis=-1)
         rot = rot.reshape(num_obj, 2, 2)
         size_offset = rot @ relative_offset.reshape(num_obj,2,1)
         size_offset = np.abs(size_offset.reshape(num_obj, 2))
-        # Box尺寸和中心点位置
+        # Box尺寸修正
         gt_boxes_3d_range[:, 3:5] = gt_boxes_3d_range[:, 3:5] + size_offset
+        # Box平面位置修正
         gt_boxes_3d_range[:, :2] = gt_boxes_3d_range[:, :2] - relative_offset * 0.5
 
         point_indices = box_np_ops.points_in_rbbox(points, gt_boxes_3d_range)

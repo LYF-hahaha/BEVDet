@@ -144,20 +144,23 @@ if __name__ == '__main__':
     # version = 'v1.0-test'
     root_path = './data/nuscenes'
     extra_tag = 'bevdetv3-nuscenes'
-    # 将原始数据集合成pkl格式的文件
-    # 这里会进行数据前融合（如Radar需要分别逆时针旋转0、90、180、270度）
-    # 根据version信息，到指定的json文件中获取场景索引
-    # 根据train val test划分，生成场景名列表
+    
+    # 1、根据数据version划分train val test的scene名
+    # 2、梳理划分好的场景中LiDAR数据是否存在（get available）
+    # 3、将其余传感器转换至LiDAR坐标系下（如Radar需要分别逆时针旋转0、90、180、270度）
+    # 4、整理gt数据（box、names、velocity...）
     nuscenes_data_prep(
         root_path=root_path,
         info_prefix=extra_tag,
         version=version,
         max_sweeps=10)
-
+    
+    # 将原始数据集合成pkl格式的文件
     # print('add_ann_infos')
     add_ann_adj_info(extra_tag)
 
-    # 生成box_gt
+    # 生成box_gt，并保存pkl文件
+    # 中间会对gt_box进行修正
     create_groundtruth_database('NuScenesDataset',
                                 root_path,
                                 extra_tag,
